@@ -3,7 +3,7 @@
 # 房间配置
 TOTAL_ROOMS = 5  # 酒店总房间数 x
 MAX_SERVICE_NUM = 3  # 同时服务上限 y
-WAIT_TIME_SLICE = 5  # 等待时间片 s秒
+WAIT_TIME_SLICE = 120  # 等待时间片 s秒
 
 # 温度配置
 DEFAULT_TEMP = 25  # 缺省温度
@@ -25,9 +25,9 @@ FAN_SPEED_POWER = {
 
 # 温度变化率 (度/分钟)
 TEMP_CHANGE_RATE = {
-    "low": 0.4,  # 低风：0.4度/分钟
-    "medium": 0.5,  # 中风：0.5度/分钟
-    "high": 0.6,  # 高风：0.6度/分钟
+    "low": 1 / 3,  # 低风：1度/3分钟
+    "medium": 0.5,  # 中风：1度/2分钟
+    "high": 1,  # 高风：1度/1分钟
 }
 
 # 关机回温速率

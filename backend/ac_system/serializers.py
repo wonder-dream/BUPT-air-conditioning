@@ -16,6 +16,10 @@ from .models import (
 
 
 class RoomSerializer(serializers.ModelSerializer):
+    room_type_display = serializers.CharField(
+        source="get_room_type_display", read_only=True
+    )
+
     class Meta:
         model = Room
         fields = "__all__"

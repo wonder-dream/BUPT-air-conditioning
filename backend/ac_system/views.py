@@ -60,6 +60,7 @@ class AvailableRoomListView(APIView):
 
     def get(self, request):
         rooms = Room.objects.filter(status="available")
+        print(f"Available rooms count: {rooms.count()}")  # Debug log
         serializer = RoomSerializer(rooms, many=True)
         return Response({"code": 200, "data": serializer.data, "message": "success"})
 

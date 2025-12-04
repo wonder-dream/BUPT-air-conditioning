@@ -65,7 +65,7 @@ class ServiceObject:
 
 
 class WaitingObject:
-    """等待对象 - 在等待队列中的房间（继续送风和计费）"""
+    """等待对象 - 在等待队列中的房间（停止送风和计费）"""
 
     def __init__(self, room_id: str, target_temp: float, fan_speed: str, mode: str):
         self.room_id = room_id
@@ -76,8 +76,8 @@ class WaitingObject:
         self.wait_duration = WAIT_TIME_SLICE  # 分配的等待时长
         self.current_temp = INITIAL_ROOM_TEMP
         self.waited_full_slice = False  # 是否已等待满一个时间片
-        self.energy_consumed = 0.0  # 耗电量（等待期间继续计费）
-        self.cost = Decimal("0.00")  # 费用（等待期间继续计费）
+        self.energy_consumed = 0.0  # 等待期间不计费
+        self.cost = Decimal("0.00")  # 等待期间不计费
         self.record_id = None  # 关联的详单记录ID
 
     def get_priority(self) -> int:
@@ -320,22 +320,22 @@ class ACScheduler:
 
     def _move_to_wait_queue(self, room_id: str, service_obj: ServiceObject):
         """将服务对象移动到等待队列（保持送风和计费）"""
-        # 注意：不结束详单记录，继续计费
-        # self._update_detail_record(service_obj)  # 移除：等待期间继续使用同一详单
+        # 结束详单记录，等待期间不计费
+        self._update_detail_record(service_obj)
 
         wait_obj = WaitingObject(
             room_id, service_obj.target_temp, service_obj.fan_speed, service_obj.mode
         )
         wait_obj.current_temp = service_obj.current_temp
-        # 继承已有的能耗和费用，继续累计
+        # 不继承能耗和费用，等待期间不累计
         wait_obj.energy_consumed = service_obj.energy_consumed
         wait_obj.cost = service_obj.cost
-        wait_obj.record_id = service_obj.record_id  # 继承详单ID
+        wait_obj.record_id = None  # 等待期间不关联详单
         self.wait_queue[room_id] = wait_obj
         del self.service_queue[room_id]
 
         self.room_states[room_id]["status"] = "waiting"
-        logger.info(f"Room {room_id} moved to wait queue (continues cooling/heating)")
+        logger.info(f"Room {room_id} moved to wait queue (stops cooling/heating)")
 
     def _power_off(self, room_id: str):
         """关机请求"""
@@ -461,24 +461,8 @@ class ACScheduler:
                 self.room_states[room_id]["energy_consumed"] = sobj.energy_consumed
                 self.room_states[room_id]["cost"] = float(sobj.cost)
 
-        # 更新等待中的房间温度（继续送风和计费，不回温）
+        # 等待队列房间温度不变，不计费
         for room_id, wobj in self.wait_queue.items():
-            rate = TEMP_CHANGE_RATE.get(wobj.fan_speed, 0.5) / 60  # 转换为每秒
-            power = FAN_SPEED_POWER.get(wobj.fan_speed, 0.5) / 60  # 转换为每秒
-
-            # 等待期间继续送风，温度继续变化
-            if wobj.mode == "cooling":
-                if wobj.current_temp > wobj.target_temp:
-                    wobj.current_temp -= rate
-                    wobj.energy_consumed += power
-                    wobj.cost += Decimal(str(power * PRICE_PER_DEGREE))
-            else:  # heating
-                if wobj.current_temp < wobj.target_temp:
-                    wobj.current_temp += rate
-                    wobj.energy_consumed += power
-                    wobj.cost += Decimal(str(power * PRICE_PER_DEGREE))
-
-            # 更新房间状态
             if room_id in self.room_states:
                 self.room_states[room_id]["current_temp"] = wobj.current_temp
                 self.room_states[room_id]["energy_consumed"] = wobj.energy_consumed
