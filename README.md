@@ -10,7 +10,7 @@
 - 支持制冷/制热两种模式
 - 实现多房间空调调度（最多同时服务 y=3 个房间）
 - 按风速优先级调度（高风 > 中风 > 低风）
-- 支持时间片轮转调度（时间片 s=5 秒）
+- 支持时间片轮转调度（时间片 s=120 秒）
 - 按能耗计费（1 元/度）
 
 ---
@@ -88,9 +88,9 @@ BUPT-air-conditioning/
 当服务队列已满时，高优先级请求可以抢占低优先级服务。
 
 #### 时间片调度
-- 时间片大小：**5 秒**
+- 时间片大小：**120 秒**
 - 当等待队列中的请求等待满一个时间片后，可以与同优先级（或更低优先级）的服务对象交换
-- **等待期间继续送风和计费**，不会停止服务
+- **等待期间停止送风和计费**，不消耗能量
 
 #### 调度流程
 ```
@@ -406,7 +406,7 @@ npm run dev
 # 房间配置
 TOTAL_ROOMS = 5            # 酒店总房间数
 MAX_SERVICE_NUM = 3        # 同时服务上限
-WAIT_TIME_SLICE = 5        # 等待时间片（秒）
+WAIT_TIME_SLICE = 120      # 等待时间片（秒）
 
 # 温度配置
 DEFAULT_TEMP = 25          # 缺省温度
@@ -438,15 +438,55 @@ ROOM_PRICE = {
 
 ## 🔧 调度器核心实现
 
-调度器位于 `backend/ac_system/scheduler.py`，采用单例模式，主要组件：
+调度器位于 `backend/ac_system/scheduler.py`，采用**调度对象与服务对象分离**的架构设计：
+
+### 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  ACScheduler（调度对象）                      │
+│                                                             │
+│  职责：                                                      │
+│  - 管理服务队列和等待队列                                     │
+│  - 优先级调度（抢占调度）                                     │
+│  - 时间片调度（轮转调度）                                     │
+│  - 请求防抖处理                                              │
+│                                                             │
+│               ↓ 委托实际操作                                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│               ACServiceManager（服务对象）                    │
+│                                                             │
+│  职责：                                                      │
+│  - 更新房间温度（制冷/制热）                                  │
+│  - 计算能耗和费用                                            │
+│  - 管理详单记录（创建、更新、结束）                            │
+│  - 管理房间状态                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### 类结构
 
 ```python
-class ServiceObject:    # 正在服务的房间对象
-class WaitingObject:    # 等待队列中的房间对象
-class ACScheduler:      # 调度器主类（单例）
+class ServiceObject:      # 正在服务的房间数据对象
+class WaitingObject:      # 等待队列中的房间数据对象
+class ACServiceManager:   # 服务对象 - 负责温控、计费、详单
+class ACScheduler:        # 调度对象 - 负责调度决策（单例）
 ```
+
+### 职责分离
+
+| 功能 | 调度对象 (ACScheduler) | 服务对象 (ACServiceManager) |
+|------|------------------------|----------------------------|
+| 队列管理 | ✅ | - |
+| 优先级调度 | ✅ | - |
+| 时间片调度 | ✅ | - |
+| 温度计算 | - | ✅ |
+| 费用计算 | - | ✅ |
+| 详单记录 | - | ✅ |
+| 房间状态 | - | ✅ |
 
 ### 调度器主循环
 
@@ -454,7 +494,7 @@ class ACScheduler:      # 调度器主类（单例）
 def _scheduler_loop(self):
     while self.running:
         self._process_pending_requests()  # 处理待处理请求（防抖）
-        self._update_temperatures()       # 更新所有房间温度
+        self._update_all_temperatures()   # 委托 ServiceManager 更新温度
         self._check_wait_queue()          # 检查等待队列（时间片调度）
         self._check_target_reached()      # 检查是否达到目标温度
         time.sleep(1)                     # 每秒执行一次
@@ -462,15 +502,18 @@ def _scheduler_loop(self):
 
 ### 关键方法
 
-| 方法 | 功能 |
-|------|------|
-| `submit_request()` | 提交空调控制请求（带防抖） |
-| `_power_on()` | 处理开机请求 |
-| `_schedule_request()` | 调度新请求（优先级/时间片） |
-| `_move_to_wait_queue()` | 将服务对象移至等待队列 |
-| `_allocate_from_wait_queue()` | 从等待队列分配服务 |
-| `_create_detail_record()` | 创建空调使用详单 |
-| `_check_target_reached()` | 检查是否达到目标温度，进入待机 |
+| 类 | 方法 | 功能 |
+|------|------|------|
+| ACScheduler | `submit_request()` | 提交空调控制请求（带防抖） |
+| ACScheduler | `_power_on()` | 处理开机请求 |
+| ACScheduler | `_schedule_request()` | 调度新请求（优先级/时间片） |
+| ACScheduler | `_move_to_wait_queue()` | 将服务对象移至等待队列 |
+| ACScheduler | `_allocate_from_wait_queue()` | 从等待队列分配服务 |
+| ACScheduler | `_check_target_reached()` | 检查是否达到目标温度，进入待机 |
+| ACServiceManager | `update_service_temperature()` | 更新房间温度和费用 |
+| ACServiceManager | `create_detail_record()` | 创建空调使用详单 |
+| ACServiceManager | `end_detail_record()` | 结束空调使用详单 |
+| ACServiceManager | `check_target_reached()` | 检查是否达到目标温度 |
 
 ---
 
@@ -586,8 +629,8 @@ def _scheduler_loop(self):
 
 2. **时间片调度测试**：
    - 开启 4 个中风房间
-   - 等待 5 秒
-   - 预期：等待队列与服务队列轮换（等待期间继续送风计费）
+   - 等待 120 秒
+   - 预期：等待队列与服务队列轮换（等待期间停止送风计费）
 
 3. **待机重启测试**：
    - 开启空调，设置目标温度
