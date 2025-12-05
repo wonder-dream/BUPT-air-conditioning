@@ -29,24 +29,51 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ========================================
-# 1. 安装系统依赖
+# 1. 安装系统依赖（检查已安装则跳过）
 # ========================================
 echo ""
-echo -e "${GREEN}[1/6] 安装系统依赖...${NC}"
+echo -e "${GREEN}[1/6] 检查系统依赖...${NC}"
 
-if command -v apt-get &> /dev/null; then
-    # Debian/Ubuntu
-    apt-get update
-    apt-get install -y python3 python3-pip python3-venv nginx nodejs npm
-elif command -v yum &> /dev/null; then
-    # CentOS/RHEL
-    yum install -y python3 python3-pip nginx nodejs npm
-elif command -v dnf &> /dev/null; then
-    # Fedora
-    dnf install -y python3 python3-pip nginx nodejs npm
+# 检查并安装 Python3
+if ! command -v python3 &> /dev/null; then
+    echo "安装 Python3..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y python3 python3-pip python3-venv
+    elif command -v dnf &> /dev/null; then
+        dnf install -y python3 python3-pip --disableexcludes=all
+    elif command -v yum &> /dev/null; then
+        yum install -y python3 python3-pip
+    fi
 else
-    echo -e "${RED}无法识别的包管理器，请手动安装依赖${NC}"
-    exit 1
+    echo "Python3 已安装: $(python3 --version)"
+fi
+
+# 检查并安装 Node.js
+if ! command -v node &> /dev/null; then
+    echo "安装 Node.js..."
+    if command -v apt-get &> /dev/null; then
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+        apt-get install -y nodejs
+    elif command -v dnf &> /dev/null || command -v yum &> /dev/null; then
+        curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+        yum install -y nodejs || dnf install -y nodejs
+    fi
+else
+    echo "Node.js 已安装: $(node --version)"
+fi
+
+# 检查并安装 Nginx
+if ! command -v nginx &> /dev/null; then
+    echo "安装 Nginx..."
+    if command -v apt-get &> /dev/null; then
+        apt-get install -y nginx
+    elif command -v dnf &> /dev/null; then
+        dnf install -y nginx --disableexcludes=all
+    elif command -v yum &> /dev/null; then
+        yum install -y nginx
+    fi
+else
+    echo "Nginx 已安装: $(nginx -v 2>&1)"
 fi
 
 # ========================================
@@ -100,22 +127,26 @@ npm run build
 echo ""
 echo -e "${GREEN}[4/6] 配置 Nginx...${NC}"
 
-# 复制 Nginx 配置
-cp "$DEPLOY_DIR/nginx.conf" /etc/nginx/sites-available/hotel-ac
-
-# 创建软链接
-if [ -f /etc/nginx/sites-enabled/hotel-ac ]; then
-    rm /etc/nginx/sites-enabled/hotel-ac
+# 检查 Nginx 配置目录结构（CentOS 和 Ubuntu 不同）
+if [ -d "/etc/nginx/sites-available" ]; then
+    # Ubuntu/Debian 风格
+    cp "$DEPLOY_DIR/nginx.conf" /etc/nginx/sites-available/hotel-ac
+    
+    if [ -f /etc/nginx/sites-enabled/hotel-ac ]; then
+        rm /etc/nginx/sites-enabled/hotel-ac
+    fi
+    ln -s /etc/nginx/sites-available/hotel-ac /etc/nginx/sites-enabled/
+    
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
+    
+    sed -i "s|/opt/BUPT-air-conditioning|$PROJECT_DIR|g" /etc/nginx/sites-available/hotel-ac
+else
+    # CentOS/RHEL 风格
+    cp "$DEPLOY_DIR/nginx.conf" /etc/nginx/conf.d/hotel-ac.conf
+    sed -i "s|/opt/BUPT-air-conditioning|$PROJECT_DIR|g" /etc/nginx/conf.d/hotel-ac.conf
 fi
-ln -s /etc/nginx/sites-available/hotel-ac /etc/nginx/sites-enabled/
-
-# 删除默认配置（可选）
-if [ -f /etc/nginx/sites-enabled/default ]; then
-    rm /etc/nginx/sites-enabled/default
-fi
-
-# 替换配置中的路径
-sed -i "s|/opt/BUPT-air-conditioning|$PROJECT_DIR|g" /etc/nginx/sites-available/hotel-ac
 
 # 测试 Nginx 配置
 nginx -t
