@@ -29,52 +29,36 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ========================================
-# 1. 安装系统依赖（检查已安装则跳过）
+# 1. 检查系统依赖（仅检查不安装）
 # ========================================
 echo ""
 echo -e "${GREEN}[1/6] 检查系统依赖...${NC}"
 
-# 检查并安装 Python3
-if ! command -v python3 &> /dev/null; then
-    echo "安装 Python3..."
-    if command -v apt-get &> /dev/null; then
-        apt-get update && apt-get install -y python3 python3-pip python3-venv
-    elif command -v dnf &> /dev/null; then
-        dnf install -y python3 python3-pip --disableexcludes=all
-    elif command -v yum &> /dev/null; then
-        yum install -y python3 python3-pip
-    fi
+# 检查 Python3
+if command -v python3 &> /dev/null; then
+    echo "✓ Python3 已安装: $(python3 --version)"
 else
-    echo "Python3 已安装: $(python3 --version)"
+    echo -e "${RED}✗ 请先安装 Python3${NC}"
+    exit 1
 fi
 
-# 检查并安装 Node.js
-if ! command -v node &> /dev/null; then
-    echo "安装 Node.js..."
-    if command -v apt-get &> /dev/null; then
-        curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-        apt-get install -y nodejs
-    elif command -v dnf &> /dev/null || command -v yum &> /dev/null; then
-        curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
-        yum install -y nodejs || dnf install -y nodejs
-    fi
+# 检查 Node.js
+if command -v node &> /dev/null; then
+    echo "✓ Node.js 已安装: $(node --version)"
 else
-    echo "Node.js 已安装: $(node --version)"
+    echo -e "${RED}✗ 请先安装 Node.js: curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash - && sudo yum install -y nodejs${NC}"
+    exit 1
 fi
 
-# 检查并安装 Nginx
-if ! command -v nginx &> /dev/null; then
-    echo "安装 Nginx..."
-    if command -v apt-get &> /dev/null; then
-        apt-get install -y nginx
-    elif command -v dnf &> /dev/null; then
-        dnf install -y nginx --disableexcludes=all
-    elif command -v yum &> /dev/null; then
-        yum install -y nginx
-    fi
+# 检查 Nginx
+if command -v nginx &> /dev/null; then
+    echo "✓ Nginx 已安装: $(nginx -v 2>&1)"
 else
-    echo "Nginx 已安装: $(nginx -v 2>&1)"
+    echo -e "${RED}✗ 请先安装 Nginx: sudo dnf install -y nginx --disableexcludes=all${NC}"
+    exit 1
 fi
+
+echo -e "${GREEN}所有依赖已就绪${NC}"
 
 # ========================================
 # 2. 配置后端
