@@ -1,0 +1,26 @@
+[Unit]
+Description=Hotel AC System - Django Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/BUPT-air-conditioning/backend
+Environment="PATH=/opt/BUPT-air-conditioning/backend/venv/bin"
+ExecStart=/opt/BUPT-air-conditioning/backend/venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    --access-logfile /var/log/hotel-ac/access.log \
+    --error-logfile /var/log/hotel-ac/error.log \
+    hotel_ac.wsgi:application
+
+Restart=always
+RestartSec=5
+
+# 创建日志目录
+ExecStartPre=/bin/mkdir -p /var/log/hotel-ac
+
+[Install]
+WantedBy=multi-user.target
