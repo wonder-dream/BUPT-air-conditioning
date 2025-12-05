@@ -34,11 +34,27 @@ fi
 echo ""
 echo -e "${GREEN}[1/6] 检查系统依赖...${NC}"
 
-# 检查 Python3
-if command -v python3 &> /dev/null; then
-    echo "✓ Python3 已安装: $(python3 --version)"
+# 检查 Python3 (优先使用 python3.11)
+PYTHON_CMD=""
+if command -v python3.11 &> /dev/null; then
+    PYTHON_CMD="python3.11"
+    echo "✓ Python3.11 已安装: $(python3.11 --version)"
+elif command -v python3.10 &> /dev/null; then
+    PYTHON_CMD="python3.10"
+    echo "✓ Python3.10 已安装: $(python3.10 --version)"
+elif command -v python3 &> /dev/null; then
+    PY_VERSION=$(python3 -c 'import sys; print(sys.version_info.minor)')
+    if [ "$PY_VERSION" -ge 8 ]; then
+        PYTHON_CMD="python3"
+        echo "✓ Python3 已安装: $(python3 --version)"
+    else
+        echo -e "${RED}✗ Python 版本过低，需要 Python 3.8+${NC}"
+        echo -e "${YELLOW}请安装: sudo dnf install -y python3.11 python3.11-pip${NC}"
+        exit 1
+    fi
 else
-    echo -e "${RED}✗ 请先安装 Python3${NC}"
+    echo -e "${RED}✗ 请先安装 Python3.8+${NC}"
+    echo -e "${YELLOW}请安装: sudo dnf install -y python3.11 python3.11-pip${NC}"
     exit 1
 fi
 
@@ -68,17 +84,17 @@ echo -e "${GREEN}[2/6] 配置后端...${NC}"
 
 cd "$BACKEND_DIR"
 
-# 创建虚拟环境
+# 创建虚拟环境（使用检测到的 Python 版本）
 if [ ! -d "venv" ]; then
-    echo "创建 Python 虚拟环境..."
-    python3 -m venv venv
+    echo "创建 Python 虚拟环境 (使用 $PYTHON_CMD)..."
+    $PYTHON_CMD -m venv venv
 fi
 
 # 激活虚拟环境并安装依赖
 source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install gunicorn
+pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install gunicorn -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 数据库迁移
 echo "执行数据库迁移..."
